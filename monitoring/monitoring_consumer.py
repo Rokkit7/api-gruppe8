@@ -2,6 +2,8 @@ import pika
 import json
 import os
 
+from common import config, messages, topology
+
 # Globale Variablen
 metrics = {
     "total_processed": 0,
@@ -10,10 +12,10 @@ metrics = {
     "by_sensor": {
         "temperature": 0,
         "humidity": 0,
-        "brightness": 0
+        "brightness": 0,
     },
     "sum_processing_time": 0.0,
-    "count_events": 0
+    "count_events": 0,
 }
 
 
@@ -21,7 +23,7 @@ def print_metrics():
     # AUSGABE
 
     # Terminal Clear
-    os.system('cls' if os.name == 'nt' else 'clear')
+    os.system("cls" if os.name == "nt" else "clear")
 
     print("=" * 45)
     print(" LIVE MONITORING DASHBOARD")
@@ -39,13 +41,13 @@ def print_metrics():
 
     # Anzahl der Nachrichten je Sensortyp
     print("Nachrichten je Sensortyp (gesamt):")
-    for sensor, count in metrics['by_sensor'].items():
+    for sensor, count in metrics["by_sensor"].items():
         print(f" - {sensor.capitalize():<15}: {count}")
     print("-" * 45)
 
     # Durchschnittliche Verarbeitungszeit
-    if metrics['count_events'] > 0:
-        avg_time = metrics['sum_processing_time'] / metrics['count_events']
+    if metrics["count_events"] > 0:
+        avg_time = metrics["sum_processing_time"] / metrics["count_events"]
         print(f"Durchschnittliche Verarbeitungszeit: {avg_time:.4f}s")
     else:
         print("Durchschnittliche Verarbeitungszeit: -")
@@ -54,12 +56,19 @@ def print_metrics():
 
 def callback(ch, method, properties, body):
     try:
-        data = json.loads(body)
+        data = json.loads(body.decode("utf-8"))
 
-        # Werte aus dem JSON lesen
-        event_type = data["event_type"]
-        sensor_type = data["sensor_type"]
-        processing_time = data["processing_time"]
+        if "event_type" in data:
+            messages.validate(messages.MT_MONITORING_EVENT, data)
+            event_type = data.get("event_type")
+            sensor_type = data.get("sensor_type")
+            processing_time = float(data.get("processing_time", 0.0))
+        elif data.get("event") == "producer_stats":
+            # Producer stats are informational only and do not affect processing KPIs.
+            ch.basic_ack(delivery_tag=method.delivery_tag)
+            return
+        else:
+            raise KeyError("event_type")
 
         # Zähler für das jeweilige Event aktualisieren
         if event_type == "processed":
@@ -90,29 +99,21 @@ def callback(ch, method, properties, body):
     except json.JSONDecodeError:
         print("Fehler: Konnte Nachricht nicht als JSON parsen.")
         ch.basic_nack(delivery_tag=method.delivery_tag, requeue=False)
+    except Exception as exc:
+        print(f"Unerwarteter Fehler bei Monitoring-Verarbeitung: {exc}")
+        ch.basic_nack(delivery_tag=method.delivery_tag, requeue=False)
 
 
 def main():
-    # Verbindung zu RabbitMQ herstellen
-    connection = pika.BlockingConnection(pika.ConnectionParameters('localhost'))
+    connection = pika.BlockingConnection(pika.URLParameters(config.RABBITMQ_URL))
     channel = connection.channel()
-
-    # Exchange deklarieren
-    exchange_name = 'monitoring_events'
-    channel.exchange_declare(exchange=exchange_name, exchange_type='fanout')
-
-    # Queue für das Monitoring erstellen
-    result = channel.queue_declare(queue='', exclusive=True)
-    queue_name = result.method.queue
-
-    # Queue an den Exchange binden
-    channel.queue_bind(exchange=exchange_name, queue=queue_name)
+    topology.declare_topology(channel)
+    channel.basic_qos(prefetch_count=20)
 
     print("Monitoring-Consumer gestartet. Warte auf Metriken...")
     print_metrics()
 
-    # Consumer starten
-    channel.basic_consume(queue=queue_name, on_message_callback=callback)
+    channel.basic_consume(queue=config.MONITORING_QUEUE, on_message_callback=callback, auto_ack=False)
 
     try:
         channel.start_consuming()
@@ -123,5 +124,5 @@ def main():
         connection.close()
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()

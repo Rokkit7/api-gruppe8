@@ -47,13 +47,13 @@ def reading_properties(reading: dict) -> pika.BasicProperties:
 
 
 def stats_event(published: dict, connection_retries: int) -> tuple[bytes, pika.BasicProperties]:
-    """MonitoringEvent 'producer_stats' laut contracts/schemas/monitoring-event.v1.json."""
-    event = messages.validate(messages.MT_MONITORING_EVENT, {
+    """Auxiliary producer statistics event for dashboarding."""
+    event = {
         "event": "producer_stats", "source": "producer", "ts": messages.now_iso(),
         "published": dict(published), "connection_retries": connection_retries,
-    })
+    }
     props = pika.BasicProperties(content_type="application/json", delivery_mode=pika.DeliveryMode.Transient,
-                                 type=messages.MT_MONITORING_EVENT)
+                                 type="producer.stats.v1")
     return messages.encode(event), props
 
 

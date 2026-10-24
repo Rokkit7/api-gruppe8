@@ -4,14 +4,14 @@ import json
 import time
 from multiprocessing import Process
 import logging
-from typing import Tuple
 
 import pika
 import pytest
 from pika import BlockingConnection
 from pika.adapters.blocking_connection import BlockingChannel
 
-from analysis.consumer import RABBITMQ_URL, run_consumer
+from analysis.consumer import run_consumer
+from common import config
 from common.topology import DLQ_QUEUE, TEMPERATURE_QUEUE, setup_rabbitmq
 from resilience.test_analysis_consumer import VALID_READING
 
@@ -19,25 +19,34 @@ LOG = logging.getLogger("DLQ Test Logger")
 
 # A faulty sensor reading that is missing the required "sensor_id" field
 READING_MISSING_FIELD = {
+    "message_id": "22222222-2222-2222-2222-222222222222",
     "timestamp": "2026-10-17T18:00:00Z",
     "type": "temperature",
     "value": 91.5,
+    "unit": "\u00b0C",
+    "location": "halle1",
 }
 
 # A faulty sensor reading that has an invalid "timestamp" field
 READING_INVALID_TIMESTAMP = {
+    "message_id": "33333333-3333-3333-3333-333333333333",
     "sensor_id": "s-01",
     "timestamp": "not-a-timestamp",
     "type": "temperature",
     "value": 91.5,
+    "unit": "\u00b0C",
+    "location": "halle1",
 }
 
 # A faulty sensor reading that has an invalid "type" field
 READING_INVALID_SENSOR_TYPE = {
+    "message_id": "44444444-4444-4444-4444-444444444444",
     "sensor_id": "s-01",
     "timestamp": "2026-10-17T18:00:00Z",
     "type": "invalid",
     "value": 91.5,
+    "unit": "\u00b0C",
+    "location": "halle1",
 }
 
 # Malformed JSON payload that misses a closing quotation mark and a closing brace
@@ -65,7 +74,7 @@ def setup_rabbitmq_test() -> tuple[BlockingConnection, BlockingChannel, Process]
     except pika.exceptions.AMQPConnectionError:
         pytest.skip("RabbitMQ is not reachable on the configured RABBITMQ_URL")
 
-    connection = pika.BlockingConnection(pika.URLParameters(RABBITMQ_URL))
+    connection = pika.BlockingConnection(pika.URLParameters(config.RABBITMQ_URL))
     channel = connection.channel()
 
     channel.queue_purge(queue=TEMPERATURE_QUEUE)
@@ -79,8 +88,8 @@ def setup_rabbitmq_test() -> tuple[BlockingConnection, BlockingChannel, Process]
 def send_sensor_reading(channel, reading: dict) -> None:
     """Send a sensor reading to the RabbitMQ exchange for testing."""
     channel.basic_publish(
-        exchange="sensor-exchange",
-        routing_key="sensor.temperature",
+        exchange=config.SENSOR_EXCHANGE,
+        routing_key="sensor.temperature.halle1",
         body=json.dumps(reading),
         properties=pika.BasicProperties(content_type="application/json", delivery_mode=2),
     )
@@ -225,7 +234,7 @@ def test_malformed_json() -> None:
 
         channel.basic_publish(
             exchange="sensor-exchange",
-            routing_key="sensor.temperature",
+            routing_key="sensor.temperature.halle1",
             body=READING_MALFORMED_JSON,
             properties=pika.BasicProperties(content_type="application/json", delivery_mode=2),
         )
@@ -276,7 +285,7 @@ def test_message_ttl() -> None:
 
         send_sensor_reading(channel, VALID_READING)
 
-        time.sleep(11)  # TTL is currently 10 seconds, so wait slightly longer.
+        time.sleep(61)  # TTL is 60 seconds, so wait slightly longer.
 
         _, properties, body = _wait_for_dead_letter(channel)
 

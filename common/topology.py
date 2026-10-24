@@ -8,6 +8,17 @@ import os
 import pika
 import common.config as conf
 
+# Backward-compatible exports used by other modules/tests
+EX_SENSOR = conf.SENSOR_EXCHANGE
+EX_MONITORING = conf.MONITORING_EXCHANGE
+DLQ_QUEUE = conf.DLQ_QUEUE
+TEMPERATURE_QUEUE = conf.TEMPERATURE_QUEUE
+
+
+def sensor_routing_key(sensor_type: str, location: str) -> str:
+    """Build the routing key used for sensor readings."""
+    return f"sensor.{sensor_type}.{location}"
+
 
 
 def queue_arguments(queue_name: str) -> dict | None:
@@ -18,7 +29,7 @@ def queue_arguments(queue_name: str) -> dict | None:
     """
     if queue_name in {conf.TEMPERATURE_QUEUE, conf.ENVIRONMENT_QUEUE}:
         return {
-            "x-message-ttl": 10_000,
+            "x-message-ttl": 60_000,
             "x-dead-letter-exchange": conf.DLX_EXCHANGE,
             "x-dead-letter-routing-key": conf.DLQ_QUEUE,
         }
@@ -46,16 +57,16 @@ def declare_topology(channel) -> None:
         channel.queue_declare(queue=queue_name, durable=True, arguments=queue_arguments(queue_name))
 
     # Sensor data is distributed by routing key and separated into analysis queues
-    channel.queue_bind(exchange=conf.SENSOR_EXCHANGE, queue=conf.TEMPERATURE_QUEUE, routing_key="sensor.temperature")
-    channel.queue_bind(exchange=conf.SENSOR_EXCHANGE, queue=conf.ENVIRONMENT_QUEUE, routing_key="sensor.humidity")
-    channel.queue_bind(exchange=conf.SENSOR_EXCHANGE, queue=conf.ENVIRONMENT_QUEUE, routing_key="sensor.pressure")
+    channel.queue_bind(exchange=conf.SENSOR_EXCHANGE, queue=conf.TEMPERATURE_QUEUE, routing_key="sensor.temperature.*")
+    channel.queue_bind(exchange=conf.SENSOR_EXCHANGE, queue=conf.ENVIRONMENT_QUEUE, routing_key="sensor.humidity.*")
+    channel.queue_bind(exchange=conf.SENSOR_EXCHANGE, queue=conf.ENVIRONMENT_QUEUE, routing_key="sensor.brightness.*")
 
     # Alarm messages are grouped by severity
-    channel.queue_bind(exchange=conf.ALARM_EXCHANGE, queue=conf.ALARM_WARNING_QUEUE, routing_key="alarm.warning")
-    channel.queue_bind(exchange=conf.ALARM_EXCHANGE, queue=conf.ALARM_CRITICAL_QUEUE, routing_key="alarm.critical")
+    channel.queue_bind(exchange=conf.ALARM_EXCHANGE, queue=conf.ALARM_WARNING_QUEUE, routing_key=conf.ALARM_WARNING_QUEUE)
+    channel.queue_bind(exchange=conf.ALARM_EXCHANGE, queue=conf.ALARM_CRITICAL_QUEUE, routing_key=conf.ALARM_CRITICAL_QUEUE)
 
     # Monitoring data is sent via a dedicated topic exchange
-    channel.queue_bind(exchange=conf.MONITORING_EXCHANGE, queue=conf.MONITORING_QUEUE, routing_key="monitoring.analysis")
+    channel.queue_bind(exchange=conf.MONITORING_EXCHANGE, queue=conf.MONITORING_QUEUE, routing_key=conf.MONITORING_ROUTING_KEY)
 
 
 def setup_rabbitmq(url: str | None = None) -> None:
@@ -65,6 +76,11 @@ def setup_rabbitmq(url: str | None = None) -> None:
     declare_topology(channel)
     connection.close()
     print("RabbitMQ topology is ready.")
+
+
+def declare_all(channel) -> None:
+    """Backward-compatible alias used by existing publisher code."""
+    declare_topology(channel)
 
 
 if __name__ == "__main__":

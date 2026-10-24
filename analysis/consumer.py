@@ -9,6 +9,7 @@ from datetime import datetime, timezone
 from typing import Any
 
 import pika
+from common import config as conf, messages
 
 logging.basicConfig(
     level=os.getenv("LOG_LEVEL", "INFO"),
@@ -16,62 +17,26 @@ logging.basicConfig(
 )
 LOG = logging.getLogger("analysis")
 
-# Broker connection defaults used across the local environment
-RABBITMQ_URL = os.getenv("RABBITMQ_URL", "amqp://guest:guest@localhost:5672/%2F")
-ALARM_EXCHANGE = os.getenv("ALARM_EXCHANGE", "alarm-exchange")
-MONITORING_EXCHANGE = os.getenv("MONITORING_EXCHANGE", "monitoring-exchange")
-MONITORING_ROUTING_KEY = os.getenv("MONITORING_ROUTING_KEY", "monitoring.analysis")
-TEMPERATURE_QUEUE = os.getenv("TEMPERATURE_QUEUE", "analysis.temperature")
-ENVIRONMENT_QUEUE = os.getenv("ENVIRONMENT_QUEUE", "analysis.environment")
-
-# Demo thresholds for anomaly detection
-THRESHOLDS = {
-    "temperature": [(80.0, "WARNING"), (100.0, "CRITICAL")],
-    "humidity": [(85.0, "WARNING"), (95.0, "CRITICAL")],
-    "pressure": [(1100.0, "WARNING"), (1200.0, "CRITICAL")],
-}
-
-
 def validate_reading(message: Any) -> dict:
     """Validate a sensor payload before processing it.
     Invalid or malformed messages should be rejected early instead of being processed with wrong assumptions
     """
     if not isinstance(message, dict):
         raise ValueError("Message must be a JSON object")
-
-    required = ("sensor_id", "timestamp", "type", "value")
-    missing = [key for key in required if key not in message]
-    if missing:
-        raise ValueError(f"Missing required fields: {', '.join(missing)}")
-
-    if not isinstance(message["sensor_id"], str) or not message["sensor_id"]:
-        raise ValueError("sensor_id must be a non-empty string")
-
-    if message["type"] not in THRESHOLDS:
-        raise ValueError(f"Unsupported sensor type: {message['type']}")
-
-    if isinstance(message["value"], bool) or not isinstance(message["value"], (int, float)):
-        raise ValueError("value must be numeric")
-
-    try:
-        datetime.fromisoformat(message["timestamp"])  # Validate ISO format
-    except ValueError:
-        raise ValueError("timestamp must be a valid ISO string, got: %s", {message['timestamp']})
-
-    return message
+    return messages.validate(messages.MT_SENSOR_READING, message)
 
 
 def alarm_level(sensor_type: str, value: float) -> str | None:
     """Return the highest alarm severity triggered by a sensor value"""
     matched = [
-        severity for threshold, severity in THRESHOLDS[sensor_type]
+        severity for threshold, severity in conf.ANOMALY_THRESHOLDS[sensor_type]
         if value > threshold
     ]
 
     if not matched:
         return None
 
-    return "CRITICAL" if "CRITICAL" in matched else "WARNING"
+    return "critical" if "critical" in matched else "warning"
 
 
 def publish_alarm(channel, reading: dict, severity: str) -> None:
@@ -94,17 +59,18 @@ def publish_alarm(channel, reading: dict, severity: str) -> None:
             f'triggered {severity}'
         ),
     }
+    messages.validate(messages.MT_ALARM, alarm)
 
-    routing_key = f"alarm.{severity.lower()}"
+    routing_key = f"alarm.{severity}"
     channel.basic_publish(
-        exchange=ALARM_EXCHANGE,
+        exchange=conf.ALARM_EXCHANGE,
         routing_key=routing_key,
         body=json.dumps(alarm, separators=(",", ":")),
         properties=pika.BasicProperties(
             content_type="application/json",
             delivery_mode=2,
             message_id=alarm["alarm_id"],
-            priority=9 if severity == "CRITICAL" else 5,
+            priority=9 if severity == "critical" else 5,
         ),
         mandatory=True,
     )
@@ -114,19 +80,26 @@ def publish_alarm(channel, reading: dict, severity: str) -> None:
 
 def publish_monitoring_event(channel, *, source: str, event_type: str, payload: dict) -> None:
     """Emit a monitoring event to the dedicated monitoring exchange"""
+    sensor_type = payload.get("sensor_type") if isinstance(payload, dict) else None
+    processing_time = payload.get("processing_time", 0.0) if isinstance(payload, dict) else 0.0
+    if sensor_type not in {"temperature", "humidity", "brightness"}:
+        sensor_type = "temperature"
+
     event = {
-        "event_id": f"{source}-{event_type}-{time.time_ns()}",
-        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "event_type": event_type,
+        "sensor_type": sensor_type,
+        "processing_time": float(processing_time),
         "source": source,
-        "type": event_type,
+        "timestamp": datetime.now(timezone.utc).isoformat(),
         "payload": payload,
     }
+    messages.validate(messages.MT_MONITORING_EVENT, event)
 
-    event_id = event["event_id"]
+    event_id = f"{source}-{event_type}-{time.time_ns()}"
 
     channel.basic_publish(
-        exchange=MONITORING_EXCHANGE,
-        routing_key=MONITORING_ROUTING_KEY,
+        exchange=conf.MONITORING_EXCHANGE,
+        routing_key=conf.MONITORING_ROUTING_KEY,
         body=json.dumps(event, separators=(",", ":")),
         properties=pika.BasicProperties(
             content_type="application/json",
@@ -144,8 +117,8 @@ def publish_aggregation_monitoring(channel, result: dict, sensor_type: str) -> N
     publish_monitoring_event(
         channel,
         source="analysis.consumer",
-        event_type="aggregation.window",
-        payload={"sensor_type": sensor_type, "result": result},
+        event_type="processed",
+        payload={"sensor_type": sensor_type, "processing_time": 0.0, "result": result},
     )
 
 
@@ -204,12 +177,12 @@ def run_consumer(mode: str) -> None:
     if mode not in {"temperature", "environment"}:
         raise ValueError("mode must be temperature or environment")
 
-    params = pika.URLParameters(RABBITMQ_URL)
+    params = pika.URLParameters(conf.RABBITMQ_URL)
     connection = pika.BlockingConnection(params)
     channel = connection.channel()
     channel.confirm_delivery()
 
-    queue = TEMPERATURE_QUEUE if mode == "temperature" else ENVIRONMENT_QUEUE
+    queue = conf.TEMPERATURE_QUEUE if mode == "temperature" else conf.ENVIRONMENT_QUEUE
     aggregator = TemperatureAggregator(channel) if mode == "temperature" else None
 
     channel.basic_qos(prefetch_count=1)
@@ -221,22 +194,36 @@ def run_consumer(mode: str) -> None:
 
             if mode == "temperature" and reading["type"] != "temperature":
                 raise ValueError("Temperature queue received a non-temperature reading")
-            if mode == "environment" and reading["type"] not in {"humidity", "pressure"}:
+            if mode == "environment" and reading["type"] not in {"humidity", "brightness"}:
                 raise ValueError("Environment queue received an unexpected sensor type")
 
+            started = time.perf_counter()
             severity = alarm_level(reading["type"], float(reading["value"]))
             if severity:
                 # Publish first. If publish fails, do not ACK the source message
                 publish_alarm(ch, reading, severity)
+                publish_monitoring_event(
+                    ch,
+                    source="analysis.consumer",
+                    event_type="anomaly",
+                    payload={
+                        "sensor_id": reading["sensor_id"],
+                        "sensor_type": reading["type"],
+                        "value": reading["value"],
+                        "severity": severity,
+                        "processing_time": time.perf_counter() - started,
+                    },
+                )
             publish_monitoring_event(
                 ch,
                 source="analysis.consumer",
-                event_type="reading.processed",
+                event_type="processed",
                 payload={
                     "sensor_id": reading["sensor_id"],
                     "sensor_type": reading["type"],
                     "value": reading["value"],
                     "severity": severity,
+                    "processing_time": time.perf_counter() - started,
                 },
             )
 
@@ -251,9 +238,21 @@ def run_consumer(mode: str) -> None:
 
         except (ValueError, UnicodeDecodeError, json.JSONDecodeError) as exc:
             LOG.exception("Invalid/unprocessable message; sending to DLQ: %s", exc)
+            publish_monitoring_event(
+                ch,
+                source="analysis.consumer",
+                event_type="failure",
+                payload={"sensor_type": "temperature", "processing_time": 0.0, "error": str(exc)},
+            )
             ch.basic_nack(delivery_tag=method.delivery_tag, requeue=False)
         except Exception:
             LOG.exception("Processing/publishing failed; sending to DLQ")
+            publish_monitoring_event(
+                ch,
+                source="analysis.consumer",
+                event_type="failure",
+                payload={"sensor_type": "temperature", "processing_time": 0.0, "error": "processing_failure"},
+            )
             ch.basic_nack(delivery_tag=method.delivery_tag, requeue=False)
 
     channel.basic_consume(queue=queue, on_message_callback=on_message, auto_ack=False)

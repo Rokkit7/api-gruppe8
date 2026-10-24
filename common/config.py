@@ -28,6 +28,7 @@ RABBITMQ_URL = os.getenv("RABBITMQ_URL", "amqp://guest:guest@localhost:5672/%2F"
 SENSOR_EXCHANGE = "sensor-exchange"
 ALARM_EXCHANGE = "alarm-exchange"
 MONITORING_EXCHANGE = "monitoring-exchange"
+MONITORING_ROUTING_KEY = "monitoring.analysis"
 DLX_EXCHANGE = "dlx"
 DLQ_QUEUE = "analysis.dlq"
 
@@ -37,3 +38,10 @@ ENVIRONMENT_QUEUE = "analysis.environment"
 ALARM_WARNING_QUEUE = "alarm.warning"
 ALARM_CRITICAL_QUEUE = "alarm.critical"
 MONITORING_QUEUE = "monitoring.analysis"
+
+# Shared anomaly thresholds (sensor_type -> [(threshold, severity)])
+ANOMALY_THRESHOLDS = {
+	"temperature": [(80.0, "warning"), (100.0, "critical")],
+	"humidity": [(85.0, "warning"), (95.0, "critical")],
+	"brightness": [(1000.0, "warning"), (5000.0, "critical")],
+}

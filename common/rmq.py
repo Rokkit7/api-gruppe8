@@ -144,7 +144,7 @@ class ReliablePublisher:
         """Best effort: Monitoring darf das eigentliche Senden nie blockieren oder abbrechen."""
         try:
             if self.monitoring_channel and self.monitoring_channel.is_open:
-                self.monitoring_channel.basic_publish(topology.EX_MONITORING, "", body, properties)
+                self.monitoring_channel.basic_publish(config.MONITORING_EXCHANGE, config.MONITORING_ROUTING_KEY, body, properties)
         except Exception as exc:  # noqa: BLE001
             log.debug("Monitoring-Event verworfen: %s", exc)
 
