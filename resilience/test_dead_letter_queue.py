@@ -12,8 +12,8 @@ from pika import BlockingConnection
 from pika.adapters.blocking_connection import BlockingChannel
 
 from analysis.consumer import RABBITMQ_URL, run_consumer
-from analysis.topology import DLQ_QUEUE, TEMPERATURE_QUEUE, setup_rabbitmq
-from tests.test_analysis_consumer import VALID_READING
+from common.topology import DLQ_QUEUE, TEMPERATURE_QUEUE, setup_rabbitmq
+from resilience.test_analysis_consumer import VALID_READING
 
 LOG = logging.getLogger("DLQ Test Logger")
 
@@ -260,7 +260,7 @@ def test_message_ttl() -> None:
     3. Neither, as the consumer is not running, so no NACK will be sent.
     4. The message will not be sent again, as the sensor data is already stale and has been moved into the DLQ.
     5. The configured TTL interval of 60 seconds will cause the message to expire and be moved into the configured DLQ.
-        (see analysis/topology.py)
+        (see common/topology.py)
     6. Since the message was left for longer than 60 seconds in the queue, it will be expired.
     7. The message expiring has no effect on other messages, but the consumer shutting down has, since it is an integral
         part of the system. However, this test is only meant to verify that the TTL mechanism works as expected.
