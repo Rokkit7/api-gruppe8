@@ -53,8 +53,10 @@ def validate_reading(message: Any) -> dict:
     if isinstance(message["value"], bool) or not isinstance(message["value"], (int, float)):
         raise ValueError("value must be numeric")
 
-    if not isinstance(message["timestamp"], str) or not message["timestamp"]:
-        raise ValueError("timestamp must be a non-empty string")
+    try:
+        datetime.fromisoformat(message["timestamp"])  # Validate ISO format
+    except ValueError:
+        raise ValueError("timestamp must be a valid ISO string, got: %s", {message['timestamp']})
 
     return message
 

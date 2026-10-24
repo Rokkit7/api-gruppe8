@@ -33,7 +33,7 @@ def queue_arguments(queue_name: str) -> dict | None:
     """
     if queue_name in {TEMPERATURE_QUEUE, ENVIRONMENT_QUEUE}:
         return {
-            "x-message-ttl": 60_000,
+            "x-message-ttl": 10_000,
             "x-dead-letter-exchange": DLX_EXCHANGE,
             "x-dead-letter-routing-key": DLQ_QUEUE,
         }
