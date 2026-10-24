@@ -1,0 +1,27 @@
+# Docker Compose setup for the local RabbitMQ broker
+# Start with: docker compose up -d
+# Stop with:  docker compose down
+services:
+  rabbitmq:
+    image: rabbitmq:4-management
+    container_name: rabbitmq
+    ports:
+      # AMQP port used by pika and all Python consumers/producers
+      - "5672:5672"
+      # Management UI port used to inspect exchanges, queues and messages
+      - "15672:15672"
+    environment:
+      RABBITMQ_DEFAULT_USER: guest
+      RABBITMQ_DEFAULT_PASS: guest
+    volumes:
+      # Persist broker data locally so queue state survives container restarts
+      - rabbitmq_data:/var/lib/rabbitmq
+    healthcheck:
+      # Ensures the broker is ready before other tools rely on it
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  rabbitmq_data:

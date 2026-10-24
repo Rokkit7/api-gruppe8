@@ -1,0 +1,23 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Monitoring Event V1",
+  "description": "Schema fuer Monitoring-Ereignisse, die von den Analyse-Consumern an den Monitoring-Consumer gesendet werden.",
+  "type": "object",
+  "required": ["event_type", "sensor_type", "processing_time"],
+  "properties": {
+    "event_type": {
+      "type": "string",
+      "enum": ["processed", "anomaly", "failure"],
+      "description": "Die Art des aufgetretenen Ereignisses."
+    },
+    "sensor_type": {
+      "type": "string",
+      "enum": ["temperature", "humidity", "brightness"],
+      "description": "Der Typ des Sensors. Notwendig, um die Nachrichten je Sensortyp zu zählen."
+    },
+    "processing_time": {
+      "type": "number",
+      "description": "Die Dauer der Verarbeitung in Sekunden, um die durchschnittliche Verarbeitungszeit zu berechnen."
+    }
+  }
+}

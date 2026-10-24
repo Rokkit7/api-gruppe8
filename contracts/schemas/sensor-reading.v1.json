@@ -1,0 +1,57 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "sensor-reading.v1.json",
+  "title": "SensorReading v1",
+  "description": "Eine Sensormessung. Sender: 2.1 Producer. Empfänger: 2.2 Analyse. Unbekannte Zusatzfelder sind erlaubt und werden von Empfängern ignoriert.",
+  "type": "object",
+  "required": ["message_id", "sensor_id", "timestamp", "type", "value", "unit", "location"],
+  "properties": {
+    "message_id": {
+      "description": "UUID v4, eindeutig pro Nachricht. Auch als AMQP-Property message_id gesetzt. Dient der Duplikaterkennung.",
+      "type": "string",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+    },
+    "sensor_id": {
+      "description": "Eindeutige ID des Sensors, z. B. TEMP-H1-01.",
+      "type": "string",
+      "pattern": "^[A-Za-z0-9_-]{1,64}$"
+    },
+    "timestamp": {
+      "description": "Zeitpunkt der Messung, ISO 8601 mit Zeitzone (UTC), z. B. 2026-10-18T09:30:00.123+00:00.",
+      "type": "string",
+      "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(\\.\\d{1,6})?(Z|[+-]\\d{2}:\\d{2})$"
+    },
+    "type": {
+      "description": "Sensortyp. Identisch mit dem Typ im Routing Key sensor.<type>.<location>.",
+      "type": "string",
+      "enum": ["temperature", "humidity", "brightness"]
+    },
+    "value": {
+      "description": "Messwert in der Einheit unit. Außerhalb des plausiblen Bereichs = ungültig (Sensordefekt) -> DLQ.",
+      "type": "number"
+    },
+    "unit": {
+      "description": "Einheit, fest je Sensortyp.",
+      "type": "string"
+    },
+    "location": {
+      "description": "Standort. Teil des Routing Keys, daher nur Kleinbuchstaben, Ziffern, _ und -.",
+      "type": "string",
+      "pattern": "^[a-z0-9_-]{1,32}$"
+    }
+  },
+  "allOf": [
+    {
+      "if": {"properties": {"type": {"const": "temperature"}}, "required": ["type"]},
+      "then": {"properties": {"unit": {"const": "°C"}, "value": {"minimum": -40, "maximum": 150}}}
+    },
+    {
+      "if": {"properties": {"type": {"const": "humidity"}}, "required": ["type"]},
+      "then": {"properties": {"unit": {"const": "%"}, "value": {"minimum": 0, "maximum": 100}}}
+    },
+    {
+      "if": {"properties": {"type": {"const": "brightness"}}, "required": ["type"]},
+      "then": {"properties": {"unit": {"const": "lx"}, "value": {"minimum": 0, "maximum": 150000}}}
+    }
+  ]
+}

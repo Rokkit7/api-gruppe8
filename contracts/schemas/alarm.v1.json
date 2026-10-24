@@ -1,0 +1,61 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Alarm Event V1",
+  "description": "Schema fuer Alarmnachrichten, die von den Analyse-Consumern ueber den direkten Alarm-Exchange an die Alarm-Queues gesendet werden.",
+  "type": "object",
+  "required": [
+    "alarm_id",
+    "timestamp",
+    "sensor_id",
+    "sensor_type",
+    "value",
+    "severity",
+    "source_timestamp",
+    "message"
+  ],
+  "properties": {
+    "alarm_id": {
+      "type": "string",
+      "description": "Eindeutige ID des Alarms."
+    },
+    "timestamp": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Zeitpunkt der Alarmerzeugung im ISO-8601-Format."
+    },
+    "sensor_id": {
+      "type": "string",
+      "description": "Eindeutige ID des Sensors, der den Alarm ausgeloest hat."
+    },
+    "sensor_type": {
+      "type": "string",
+      "enum": [
+        "temperature",
+        "humidity",
+        "brightness"
+      ],
+      "description": "Typ des Sensors."
+    },
+    "value": {
+      "type": "number",
+      "description": "Gemessener Sensorwert, der den Alarm ausgeloest hat."
+    },
+    "severity": {
+      "type": "string",
+      "enum": [
+        "warning",
+        "critical"
+      ],
+      "description": "Schweregrad des Alarms. Bestimmt den Routing Key und die Ziel-Queue."
+    },
+    "source_timestamp": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Zeitpunkt der urspruenglichen Sensormessung im ISO-8601-Format."
+    },
+    "message": {
+      "type": "string",
+      "description": "Lesbare Beschreibung des ausgeloesten Alarms."
+    }
+  }
+}

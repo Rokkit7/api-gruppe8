@@ -1,0 +1,69 @@
+asyncapi: 3.0.0
+
+info:
+  title: IoT-Sensordaten-Plattform
+  version: 1.0.0
+  description: |
+    Verbindlicher Nachrichtenvertrag zwischen allen Komponenten (API first).
+    Änderungen nur per eigenem Pull Request nach `main`, mit Zustimmung von Sender und Empfänger.
+
+    Konventionen:
+    * Body: UTF-8-JSON, `content_type = application/json`. Struktur: `schemas/*.json`.
+    * Zeitstempel: ISO 8601 mit Zeitzone (UTC).
+    * Version steht in der AMQP-Property `type` (z. B. `sensor.reading.v1`).
+      Neues optionales Feld = abwärtskompatibel (bleibt v1), alles andere = v2.
+    * Empfänger ignorieren unbekannte Felder (Tolerant Reader).
+    * Zustellung at-least-once: Fachnachrichten persistent (`delivery_mode = 2`),
+      Publisher Confirms beim Senden, manuelle ACKs beim Empfangen.
+    * Ungültige Nachricht (verletzt Schema) = permanenter Fehler -> `basic_nack(requeue=false)` -> DLQ.
+      Nie `requeue=true` in einer Schleife.
+    * Die Topologie wird nur über `common/topology.py` deklariert (verantwortlich: 2.4).
+
+servers:
+  local:
+    host: localhost:5672
+    protocol: amqp
+    protocolVersion: 0.9.1
+    description: RabbitMQ >= 3.12 mit Quorum-Queues (lokal z. B. über docker-compose.yml), vhost "/".
+
+channels:
+
+  sensorReadings:
+    address: sensor.{sensorType}.{location}
+    title: Exchange x.sensor (topic)
+    description: Routing Key `sensor.<type>.<location>`, muss zu `type` und `location` im Body passen.
+    parameters:
+      sensorType:
+        enum: [temperature, humidity, brightness]
+      location:
+        description: Nur `[a-z0-9_-]`, z. B. halle1.
+    messages:
+      sensorReading:
+        $ref: '#/components/messages/SensorReading'
+    bindings:
+      amqp:
+        is: routingKey
+        exchange: {name: x.sensor, type: topic, durable: true, autoDelete: false, vhost: /}
+
+operations:
+
+  publishSensorReading:
+    title: 2.1 sendet Messungen
+    description: |
+      Persistent, Publisher Confirms, `mandatory = true`. Bei temporären Verbindungsfehlern
+      max. 5 Wiederholungen mit Exponential Backoff (≈ 1, 2, 4, 8, 10 s, nie > 10 s).
+    action: send
+    channel: {$ref: '#/channels/sensorReadings'}
+    bindings:
+      amqp: {deliveryMode: 2, mandatory: true}
+
+components:
+
+  messages:
+
+    SensorReading:
+      name: SensorReading
+      contentType: application/json
+      payload: {$ref: './schemas/sensor-reading.v1.json'}
+      bindings:
+        amqp: {messageType: sensor.reading.v1}
