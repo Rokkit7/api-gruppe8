@@ -1,0 +1,12 @@
+python3 -m venv .venv
+source .venv/bin/activate
+
+docker compose up -d
+python -m scripts.setup_rabbitmq
+
+
+# Test1: 
+python -m resilience.run_tests crash
+
+#Test2: 
+python -m resilience.run_tests invalid
