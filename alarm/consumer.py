@@ -21,7 +21,8 @@ def handle_alarm(alarm: dict, priority: str):
     print(f"Alarm der Priorität {priority}wird verarbeitet :{alarm}")
 
     """ Validierung der Nachricht"""
-    validate_reading(alarm)
+    message = validate_reading(alarm)
+    print(f"{message}")
 
     alarm_id, timestamp, sensor_id, sensor_type, value, severity, source_timestamp, message = (
         alarm)["alarm_id", "timestamp", "sensor_id", "sensor_type", "value", "severity", "source_timestamp", "message"]
@@ -34,6 +35,9 @@ def handle_alarm(alarm: dict, priority: str):
 
     alarm_counter[priority] += 1
     print(f"Anzahl erfolgreicher {priority} verarbeiteter Alarme: {alarm_counter[priority]}")
+
+    """ sensor hat über lange zeit die hohen werte """
+    """ 2.6. -> 4 testen"""
 
 
 def init_connection():
