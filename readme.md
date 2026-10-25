@@ -18,10 +18,11 @@
 ├── analysis/                           # (2.2)
 ├── alarm/                              # (2.3)
 ├── monitoring/                         # (2.5)
-├── resilience/                         # (2.6) Szenarien, DLQ-Inspector
-│   ├── test_consumer_crash.py
-│   ├── test_invalid_message.py
-│   ├── dlq_inspector.py
-│   └── README.md
+├── resilience/                         # (2.6) Resilience tests
+│   ├── test_consumer_crash.py          # Consumer crash and message redelivery
+│   ├── test_invalid_message.py         # Invalid message and DLQ handling
+│   ├── run_tests.py                    # Automated execution of both tests
+│   ├── dlq_inspector.py                # DLQ inspection, if present
+│   └── README.md                       # Test documentation
 └── docker-compose.yml                  # als lokale RabbitMQ-Umgebung
 ```
