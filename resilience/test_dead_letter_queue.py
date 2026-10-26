@@ -12,7 +12,9 @@ from pika.adapters.blocking_connection import BlockingChannel
 
 from analysis.consumer import run_consumer
 from common import config
-from common.topology import DLQ_QUEUE, TEMPERATURE_QUEUE, setup_rabbitmq
+from common.config import DLQ_QUEUE, TEMPERATURE_QUEUE
+
+from common.topology import setup_rabbitmq
 from resilience.test_analysis_consumer import VALID_READING
 
 LOG = logging.getLogger("DLQ Test Logger")
@@ -285,7 +287,7 @@ def test_message_ttl() -> None:
 
         send_sensor_reading(channel, VALID_READING)
 
-        time.sleep(61)  # TTL is 60 seconds, so wait slightly longer.
+        time.sleep(11)  # TTL is 60 seconds, so wait slightly longer.
 
         _, properties, body = _wait_for_dead_letter(channel)
 
